@@ -68,6 +68,24 @@ ENV/
 env.bak/
 venv.bak/
 .venv/
+pandadock_env/
+
+# Conda environments
+pandadock/
+
+# PyMOL files
+*.pse
+*.pml
+
+# Molecular files (output)
+*.mol2
+*.xyz
+*.sdf
+*.pdbqt
+
+# Additional pip/conda files
+pip-wheel-metadata/
+share/python-wheels/
 
 # VSCode
 .vscode/

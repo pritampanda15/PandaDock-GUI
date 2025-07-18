@@ -1,69 +1,20 @@
-apsw==3.49.1.0
+apsw==3.50.2.0
 biopython==1.85
-Brotli==1.1.0
-certifi @ file:///home/conda/feedstock_root/build_artifacts/certifi_1739515848642/work/certifi
-cffi==1.17.1
-charset-normalizer==3.4.1
-colorama==0.4.6
-contourpy @ file:///D:/bld/contourpy_1673633800680/work
-cssselect2==0.8.0
-cycler @ file:///home/conda/feedstock_root/build_artifacts/cycler_1733332471406/work
-fonttools @ file:///D:/bld/fonttools_1680021390294/work
-greenlet @ file:///D:/bld/greenlet_1674937785211/work
-idna==3.10
-joblib==1.4.2
-kiwisolver @ file:///D:/bld/kiwisolver_1666805897345/work
-lxml==5.4.0
-markdown-it-py==3.0.0
-matplotlib @ file:///D:/bld/matplotlib-suite_1678135794748/work
-mdurl==0.1.2
-munkres==1.1.4
-numpy @ file:///D:/bld/numpy_1682210459957/work
-packaging @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_packaging_1745345660/work
-pandadock==2.0.0
-pandas @ file:///D:/bld/pandas_1682331614121/work
-pillow @ file:///C:/b/abs_68t826txdy/croot/pillow_1744613085333/work
+lxml==6.0.0
+numpy==1.26.4
+packaging>=21.0
+pillow==11.3.0
 plip==2.4.0
-ply @ file:///home/conda/feedstock_root/build_artifacts/ply_1733239724146/work
-Pmw @ file:///D:/bld/pmw_1695847221152/work
-pycairo==1.23.0
-pycparser==2.22
-pydyf==0.11.0
-Pygments==2.19.1
-pymol==2.5.0
-pyparsing @ file:///home/conda/feedstock_root/build_artifacts/pyparsing_1743089729650/work
-pyphen==0.17.2
-PyQt5-Qt5==5.15.2
+ply>=3.11
+Pmw>=2.0
+pymol==3.1.0
+PyQt5==5.15.11
 PyQt5_sip==12.17.0
-PyQt6==6.7.1
-PyQt6_sip @ file:///C:/b/abs_f47pmp6xmn/croot/pyqt-split_1744804513582/work/pyqt_sip
-PySide6==6.9.0
-PySide6_Addons==6.9.0
-PySide6_Essentials==6.9.0
-python-dateutil @ file:///home/conda/feedstock_root/build_artifacts/python-dateutil_1733215673016/work
-pytz @ file:///home/conda/feedstock_root/build_artifacts/pytz_1742920838005/work
-PyYAML==6.0.2
-rdkit==2023.9.5
-reportlab @ file:///D:/bld/reportlab_1682601355914/work
-requests==2.32.3
-rich==14.0.0
-rich-argparse==1.7.0
-scikit-learn==1.6.1
-scipy==1.15.2
-seaborn==0.13.2
-shiboken6==6.9.0
-sip @ file:///D:/bld/sip_1745411214637/work
-six @ file:///home/conda/feedstock_root/build_artifacts/six_1733380938961/work
-SQLAlchemy @ file:///D:/bld/sqlalchemy_1682930967890/work
-tabulate==0.9.0
-threadpoolctl==3.6.0
-tinycss2==1.4.0
-tinyhtml5==2.0.0
-tomli @ file:///home/conda/feedstock_root/build_artifacts/tomli_1733256695513/work
-tqdm==4.67.1
-typing_extensions @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_typing_extensions_1744302253/work
-tzdata @ file:///home/conda/feedstock_root/build_artifacts/python-tzdata_1742745135198/work
-urllib3==2.4.0
-weasyprint==65.1
-webencodings==0.5.1
-zopfli==0.2.3.post1
+PySide6==6.9.1
+PySide6_Addons==6.9.1
+PySide6_Essentials==6.9.1
+rdkit==2025.3.3
+shiboken6==6.9.1
+sip>=6.0
+toml>=0.10.2
+tomli>=1.2.0

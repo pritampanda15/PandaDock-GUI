@@ -1,0 +1,25 @@
+name: pandadock
+channels:
+  - conda-forge
+  - schrodinger
+  - defaults
+dependencies:
+  - python=3.9
+  - pip
+  - numpy=1.26.4
+  - biopython=1.85
+  - lxml=6.0.0
+  - pillow=11.3.0
+  - rdkit=2025.3.3
+  - pymol=3.1.0
+  - pyside6=6.9.1
+  - pyqt5=5.15.11
+  - pip:
+    - apsw==3.50.2.0
+    - plip==2.4.0
+    - packaging>=21.0
+    - ply>=3.11
+    - Pmw>=2.0
+    - sip>=6.0
+    - toml>=0.10.2
+    - tomli>=1.2.0
