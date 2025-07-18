@@ -5,11 +5,12 @@ import sys
 import shutil
 from PySide6 import QtWidgets, QtGui, QtCore
 from PySide6.QtWidgets import (
-    QMainWindow, QApplication, QMenu, QFileDialog, QListWidget, QDockWidget, QMessageBox, QLabel, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLineEdit, QTextEdit)
-from PySide6.QtGui import QIcon, QActionGroup, QAction, QKeySequence, QPixmap
-from PySide6.QtCore import Qt, QProcess
+    QMainWindow, QApplication, QMenu, QFileDialog, QListWidget, QDockWidget, QMessageBox, QLabel, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLineEdit, QTextEdit, QProgressBar, QFrame)
+from PySide6.QtGui import QIcon, QActionGroup, QAction, QKeySequence, QPixmap, QMovie
+from PySide6.QtCore import Qt, QProcess, QTimer, QPropertyAnimation, QEasingCurve, QRect
 from pymol._gui import PyMOLDesktopGUI
 from view import PymolGLWidget
+from styles import PROFESSIONAL_THEME, MAIN_COLORS, LOADING_ANIMATION_STYLE, get_loading_spinner_html
 import os
 from Bio.PDB import PDBParser, PDBIO, Select
 import subprocess
@@ -44,38 +45,45 @@ def show_stylish_messagebox(parent, title, message, icon=QMessageBox.Information
     msg_box.setStyleSheet("""
         QMessageBox {
             background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                      stop: 0 #F8F9FA, stop: 1 #E9ECEF);
-            color: #2C3E50;
+                                      stop: 0 #ffffff, stop: 1 #f8fafc);
+            color: #1e293b;
             font-size: 14px;
-            font-family: 'Segoe UI', 'Arial', sans-serif;
-            border-radius: 15px;
-            border: 2px solid #4CAF50;
+            font-family: 'Segoe UI', 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
+            border-radius: 16px;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
         }
         QLabel {
-            color: #2C3E50;
+            color: #1e293b;
             font-size: 14px;
             font-weight: 500;
-            padding: 10px;
+            padding: 12px;
+            line-height: 1.5;
         }
         QPushButton {
             background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                      stop: 0 #66BB6A, stop: 1 #4CAF50);
+                                      stop: 0 #6366f1, stop: 1 #4f46e5);
             color: white;
             border-radius: 8px;
-            padding: 8px 20px;
+            padding: 10px 24px;
             font-size: 13px;
             font-weight: 600;
-            min-width: 90px;
+            font-family: 'Segoe UI', 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
+            min-width: 100px;
             border: none;
+            box-shadow: 0 2px 4px -1px rgba(0, 0, 0, 0.2);
         }
         QPushButton:hover {
             background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                      stop: 0 #5CBB60, stop: 1 #388E3C);
+                                      stop: 0 #5b56f0, stop: 1 #4338ca);
             transform: translateY(-1px);
+            box-shadow: 0 4px 8px -2px rgba(0, 0, 0, 0.25);
         }
         QPushButton:pressed {
             background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                      stop: 0 #388E3C, stop: 1 #2E7D32);
+                                      stop: 0 #4338ca, stop: 1 #3730a3);
+            transform: translateY(0px);
+            box-shadow: 0 1px 2px -1px rgba(0, 0, 0, 0.2);
         }
     """)
     msg_box.exec_()
@@ -109,11 +117,15 @@ class PyMOLOnlyWindow(QMainWindow, PyMOLDesktopGUI):
         self.setAcceptDrops(True)
         self.setDockOptions(QMainWindow.AnimatedDocks | QMainWindow.AllowTabbedDocks)
         
-        # Enhanced main window styling
-        self.setStyleSheet("""
-            QMainWindow {
-                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                          stop: 0 #F8F9FA, stop: 1 #E9ECEF);
+        # Apply professional theme
+        self.setStyleSheet(PROFESSIONAL_THEME + """
+            QMainWindow::separator {
+                background: #cbd5e1;
+                width: 1px;
+                height: 1px;
+            }
+            QMainWindow::separator:hover {
+                background: #6366f1;
             }
         """)
         # After creating your main window (in __init__ of PyMOLOnlyWindow)
@@ -132,82 +144,90 @@ class PyMOLOnlyWindow(QMainWindow, PyMOLDesktopGUI):
         self.object_list_dock = QDockWidget("Loaded Ligands / Protein", self)
         self.object_list_dock.setWidget(self.object_list)
         self.object_list_dock.setFeatures(QDockWidget.NoDockWidgetFeatures)
-        self.object_list_dock.setStyleSheet("""
-            QDockWidget {
+        self.object_list_dock.setStyleSheet(f"""
+            QDockWidget {{
                 background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                          stop: 0 #E8F5E8, stop: 1 #C8E6C9);
-                border-radius: 10px;
-                border: 2px solid #4CAF50;
-            }
-            QDockWidget::title {
+                                          stop: 0 {MAIN_COLORS['background']}, stop: 1 {MAIN_COLORS['surface']});
+                border-radius: 12px;
+                border: 1px solid {MAIN_COLORS['border']};
+                box-shadow: 0 4px 6px -1px {MAIN_COLORS['shadow']};
+            }}
+            QDockWidget::title {{
                 background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                          stop: 0 #66BB6A, stop: 1 #4CAF50);
+                                          stop: 0 {MAIN_COLORS['primary']}, stop: 1 {MAIN_COLORS['primary_dark']});
                 color: white;
-                font-size: 16px;
+                font-size: 14px;
                 font-weight: 600;
-                font-family: 'Segoe UI', 'Arial', sans-serif;
-                padding: 8px 12px;
-                border-top-left-radius: 8px;
-                border-top-right-radius: 8px;
+                font-family: 'Segoe UI', 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
+                padding: 12px 16px;
+                border-top-left-radius: 12px;
+                border-top-right-radius: 12px;
                 text-align: center;
-            }
+                letter-spacing: 0.025em;
+            }}
         """)
-        self.object_list.setStyleSheet("""
-            QListWidget {
-                background-color: #181818;
-                color: #e0e0e0;
-                border: 1px solid #333;
-                font-size: 15px;
-                font-family: 'Consolas', 'Segoe UI', monospace;
+        self.object_list.setStyleSheet(f"""
+            QListWidget {{
+                background-color: {MAIN_COLORS['background']};
+                color: {MAIN_COLORS['text']};
+                border: none;
+                font-size: 13px;
+                font-family: 'Segoe UI', 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
                 border-radius: 8px;
-                padding: 4px;
-            }
-            QListWidget::item {
+                padding: 8px;
+                selection-background-color: {MAIN_COLORS['primary']};
+            }}
+            QListWidget::item {{
                 background: transparent;
-                padding: 8px 4px;
-                border-bottom: 1px solid #222;
-            }
-            QListWidget::item:selected {
-                background: #4CAF50;
-                color: #fff;
+                padding: 12px 16px;
+                border-bottom: 1px solid {MAIN_COLORS['border']};
                 border-radius: 6px;
-            }
-            QListWidget::item:hover {
-                background: #333;
-                color: #fff;
-            }
-            QScrollBar:vertical, QScrollBar:horizontal {
-                background: #222;
-                width: 12px;
-                margin: 2px 0 2px 0;
-                border-radius: 6px;
-            }
-            QScrollBar::handle:vertical, QScrollBar::handle:horizontal  {
-                background: #4CAF50;
-                min-height: 24px;
-                border-radius: 6px;
-            }
-            QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover {
-                background: #388E3C;
-            }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical, 
-            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {                          
+                margin: 2px 0;
+                transition: all 0.2s ease;
+            }}
+            QListWidget::item:selected {{
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                          stop: 0 {MAIN_COLORS['primary']}, stop: 1 {MAIN_COLORS['primary_dark']});
+                color: {MAIN_COLORS['background']};
+                border: none;
+                font-weight: 500;
+            }}
+            QListWidget::item:hover {{
+                background: {MAIN_COLORS['surface']};
+                color: {MAIN_COLORS['text']};
+                border: 1px solid {MAIN_COLORS['border']};
+            }}
+            QScrollBar:vertical {{
+                background: {MAIN_COLORS['surface']};
+                width: 8px;
+                margin: 0;
+                border-radius: 4px;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {MAIN_COLORS['text_secondary']};
+                min-height: 20px;
+                border-radius: 4px;
+            }}
+            QScrollBar::handle:vertical:hover {{
+                background: {MAIN_COLORS['text']};
+            }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
                 background: none;
                 height: 0px;
-            }
-            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical,
-            QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
+            }}
+            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
                 background: none;
-            }
+            }}
         """)
-        # Enhanced title with larger, better positioned logo
+        # Enhanced title with modern typography
         bold_title = QLabel("PandaDock")
-        bold_title.setStyleSheet("""
-            font-weight: bold; 
-            font-size: 32px;
-            color: #2C3E50;
-            font-family: 'Segoe UI', 'Arial', sans-serif;
-            margin-left: 10px;
+        bold_title.setStyleSheet(f"""
+            font-weight: 700; 
+            font-size: 28px;
+            color: {MAIN_COLORS['text']};
+            font-family: 'Segoe UI', 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
+            margin-left: 12px;
+            letter-spacing: -0.025em;
         """)
         bold_title.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         
@@ -226,15 +246,16 @@ class PyMOLOnlyWindow(QMainWindow, PyMOLDesktopGUI):
         title_layout.addStretch()
         title_layout.setContentsMargins(10, 5, 10, 5)
 
-        # Create a QWidget to hold the layout
+        # Create a QWidget to hold the layout with modern design
         title_widget = QWidget()
         title_widget.setLayout(title_layout)
-        title_widget.setStyleSheet("""
+        title_widget.setStyleSheet(f"""
             background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                      stop: 0 #E8F5E8, stop: 1 #C8E6C9);
-            border-radius: 10px;
-            border: 2px solid #4CAF50;
-            padding: 5px;
+                                      stop: 0 {MAIN_COLORS['background']}, stop: 1 {MAIN_COLORS['surface']});
+            border-radius: 12px;
+            border: 1px solid {MAIN_COLORS['border']};
+            padding: 8px;
+            box-shadow: 0 2px 4px -1px {MAIN_COLORS['shadow']};
         """)
         
         # --- Add log dock widget at the bottom (do this ONCE here) ---
@@ -242,76 +263,77 @@ class PyMOLOnlyWindow(QMainWindow, PyMOLDesktopGUI):
         self.log_text_edit = QTextEdit()
         log_text_edit = self.log_text_edit
         self.log_text_edit.setReadOnly(True)
-        self.log_text_edit.setStyleSheet("""
-            QTextEdit {
+        self.log_text_edit.setStyleSheet(f"""
+            QTextEdit {{
                 background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                          stop: 0 #1E1E1E, stop: 1 #2C2C2C);
-                color: #E0E0E0;
-                font-family: 'Consolas', 'Monaco', monospace;
+                                          stop: 0 #0f172a, stop: 1 #1e293b);
+                color: #e2e8f0;
+                font-family: 'Cascadia Code', 'Fira Code', 'Consolas', 'Monaco', monospace;
                 font-size: 12px;
-                border: 2px solid #4CAF50;
+                border: 1px solid {MAIN_COLORS['border']};
                 border-radius: 8px;
-                padding: 10px;
-                selection-background-color: #4CAF50;
+                padding: 12px;
+                selection-background-color: {MAIN_COLORS['primary']};
                 selection-color: white;
-            }
+                line-height: 1.4;
+            }}
         """)
         self.log_dock = QDockWidget("", self)
         self.log_dock.setWidget(self.log_text_edit)
         self.log_dock.setFeatures(QDockWidget.NoDockWidgetFeatures)
-        self.log_dock.setStyleSheet("""
-            QDockWidget {
+        self.log_dock.setStyleSheet(f"""
+            QDockWidget {{
                 background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
                                           stop: 0 #263238, stop: 1 #37474F);
                 border-radius: 10px;
-                border: 2px solid #4CAF50;
-            }
-            QDockWidget::title {
+                border: 2px solid {MAIN_COLORS['success']};
+            }}
+            QDockWidget::title {{
                 background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                          stop: 0 #66BB6A, stop: 1 #4CAF50);
+                                          stop: 0 {MAIN_COLORS['success']}, stop: 1 #059669);
                 color: white;
                 font-size: 16px;
                 font-weight: 600;
-                font-family: 'Segoe UI', 'Arial', sans-serif;
+                font-family: 'Segoe UI', 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
                 padding: 8px 12px;
                 border-top-left-radius: 8px;
                 border-top-right-radius: 8px;
                 text-align: center;
-            }
-            QTextEdit {
+            }}
+            QTextEdit {{
                 background: #1E1E1E;
                 color: #E0E0E0;
-                font-family: 'Consolas', 'Monaco', monospace;
+                font-family: 'Cascadia Code', 'Fira Code', 'Consolas', 'Monaco', monospace;
                 font-size: 12px;
                 border: none;
                 border-radius: 5px;
                 padding: 8px;
-            }
-            QScrollBar:vertical, QScrollBar:horizontal {
+            }}
+            QScrollBar:vertical, QScrollBar:horizontal {{
                 background: #333;
                 width: 12px;
                 margin: 2px 0 2px 0;
                 border-radius: 6px;
-            }
-            QScrollBar::handle:vertical, QScrollBar::handle:horizontal  {
+            }}
+            QScrollBar::handle:vertical, QScrollBar::handle:horizontal  {{
                 background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                          stop: 0 #66BB6A, stop: 1 #4CAF50);
+                                          stop: 0 {MAIN_COLORS['success']}, stop: 1 #059669);
                 min-height: 24px;
                 border-radius: 6px;
-            }
-            QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover {
+            }}
+            QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover {{
                 background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                          stop: 0 #5CBB60, stop: 1 #388E3C);
-            }
+                                          stop: 0 #06b6d4, stop: 1 #0891b2);
+            }}
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical, 
-            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {                          
+            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{                          
                 background: none;
                 height: 0px;
-            }
+            }}
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical,
-            QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
+            QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {{
                 background: none;
-            }
+            }}
         """)
         self.addDockWidget(Qt.BottomDockWidgetArea, self.log_dock)
 
@@ -319,89 +341,104 @@ class PyMOLOnlyWindow(QMainWindow, PyMOLDesktopGUI):
         self.stdout_logger = QTextEditLogger(self.log_text_edit)
         sys.stdout = self.stdout_logger
         sys.stderr = self.stdout_logger
-        print("\n" + "="*50)
-        print("🐼 Welcome to PandaDock - Molecular Docking Suite")
-        print("Version 2.0 - Enhanced GUI Edition")
+        print("\n" + "═"*60)
+        print("🚀 Welcome to PandaDock - Molecular Docking Suite")
+        print("Version 2.0 - Professional GUI Edition")
         print("Ready for molecular docking simulations...")
-        print("="*50 + "\n")
+        print("═"*60 + "\n")
         self.newwidget_bg = QDockWidget(self)
         self.newwidget_bg.setTitleBarWidget(title_widget)  # Set the custom title bar widget
         self.newwidget_bg.setWidget(self.newwidget)
         self.newwidget_bg.setFeatures(QDockWidget.NoDockWidgetFeatures)  # Disable floatable and closable
         self.newwidget_bg.setAllowedAreas(Qt.NoDockWidgetArea)  # Prevent sliding
-        self.newwidget_bg.setFixedSize(320, 450)
-        self.newwidget_bg.setStyleSheet("""
-            QDockWidget {
+        self.newwidget_bg.setFixedSize(320, 550)  # Increased height for 6 buttons
+        self.newwidget_bg.setStyleSheet(f"""
+            QDockWidget {{
                 background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                          stop: 0 #FAFAFA, stop: 1 #F0F0F0);
-                border-radius: 15px;
-                border: 2px solid #4CAF50;
-            }
-            QLabel {
-                color: #2C3E50;
-                font-size: 14px;
-                font-family: 'Segoe UI', 'Arial', sans-serif;
-                font-weight: 500;
-                margin: 2px 0;
-            }
-            QPushButton {
-                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                          stop: 0 #66BB6A, stop: 1 #4CAF50);
-                color: white;
-                font-size: 14px;
-                font-weight: 600;
-                border-radius: 10px;
-                padding: 10px 18px;
-                margin: 8px 2px;
-                border: none;
-                min-height: 35px;
-            }
-            QPushButton:hover {
-                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                          stop: 0 #5CBB60, stop: 1 #388E3C);
-            }
-            QPushButton:pressed {
-                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                          stop: 0 #388E3C, stop: 1 #2E7D32);
-            }
-            QPushButton:disabled {
-                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                          stop: 0 #C8E6C9, stop: 1 #A5D6A7);
-                color: #81C784;
-            }
+                                          stop: 0 {MAIN_COLORS['background']}, stop: 1 {MAIN_COLORS['surface']});
+                border-radius: 16px;
+                border: 1px solid {MAIN_COLORS['border']};
+                box-shadow: 0 10px 15px -3px {MAIN_COLORS['shadow']};
+            }}
         """)
         newwidget_layout = QVBoxLayout()
-
-        # Add buttons and labels with improved styling
-
-        
-
-        # Enhanced button styling with better icons and descriptions
-        buttons = [
-            ("🚀 Initialize", "Initialize New Docking Session"),
-            ("📁 Load Ligands", "Load Small Molecule Ligands"),
-            ("🧬 Load Protein", "Load Target Protein Structure"),
-            ("🎯 Define Site", "Configure Binding Site Parameters"),
-            ("⚡ Execute", "Execute Docking Simulation"),
-        ]
+        newwidget_layout.setSpacing(4)  # Reduced spacing between items
+        newwidget_layout.setContentsMargins(8, 8, 8, 8)  # Reduced margins around the entire layout
 
         # Create button variables for dynamic enabling/disabling
-        self.start_button = QPushButton("🚀 Initialize")
-        self.ligand_button = QPushButton("📁 Load Ligands")
-        self.protein_button = QPushButton("🧬 Load Protein")
+        self.start_button = QPushButton("Initialize Session")
+        self.start_button.setStyleSheet("color: black;")
+        self.ligand_button = QPushButton("Load Ligands")
+        self.protein_button = QPushButton("Load Protein")
         global BindingButton
-        self.binding_site_button = QPushButton("🎯 Define Site")
+        self.binding_site_button = QPushButton("Define Binding Site")
         BindingButton = self.binding_site_button
         global DockingButton
-        self.run_button = QPushButton("⚡ Execute")
+        self.run_button = QPushButton("Execute Docking")
         DockingButton = self.run_button
+        self.results_button = QPushButton("View Results")
+        self.results_button.setEnabled(False)  # Initially disabled
 
-        # Initially enable only the Start button
+        # Create professional button styles for direct application
+        self.enabled_button_style = f"""
+        QPushButton {{
+            color: white;
+            background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                      stop: 0 {MAIN_COLORS['primary']}, stop: 1 {MAIN_COLORS['primary_dark']});
+            border-radius: 10px;
+            border: 2px solid {MAIN_COLORS['primary_dark']};
+            padding: 10px 20px;
+            font-size: 14px;
+            font-weight: 600;
+            font-family: 'Segoe UI', 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
+            min-height: 36px;
+            min-width: 180px;
+        }}
+        QPushButton:hover {{
+            background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                      stop: 0 #5b56f0, stop: 1 #4338ca);
+            transform: translateY(-1px);
+        }}
+        QPushButton:pressed {{
+            background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                      stop: 0 #4338ca, stop: 1 #3730a3);
+        }}
+        """
+        
+        self.disabled_button_style = f"""
+        QPushButton {{
+            color: {MAIN_COLORS['text']};
+            background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                      stop: 0 {MAIN_COLORS['surface']}, stop: 1 #e2e8f0);
+            border-radius: 10px;
+            border: 1px solid {MAIN_COLORS['border']};
+            padding: 10px 20px;
+            font-size: 14px;
+            font-weight: 600;
+            font-family: 'Segoe UI', 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
+            min-height: 36px;
+            min-width: 180px;
+        }}
+        """
+
+        # Initially enable only the Start button and apply styles
         self.start_button.setEnabled(True)
+        self.start_button.setStyleSheet(self.enabled_button_style)
+        
         self.ligand_button.setEnabled(False)
+        self.ligand_button.setStyleSheet(self.disabled_button_style)
+        
         self.protein_button.setEnabled(False)
+        self.protein_button.setStyleSheet(self.disabled_button_style)
+        
         self.binding_site_button.setEnabled(False)
-        self.run_button.setEnabled(False) #FINDCODE
+        self.binding_site_button.setStyleSheet(self.disabled_button_style)
+        
+        self.run_button.setEnabled(False)
+        self.run_button.setStyleSheet(self.disabled_button_style)
+        
+        self.results_button.setEnabled(False)
+        self.results_button.setStyleSheet(self.disabled_button_style)
 
         # Define button functions
         def start_new_session():
@@ -415,6 +452,7 @@ class PyMOLOnlyWindow(QMainWindow, PyMOLDesktopGUI):
                     print("New session started in: {}".format(main_directory))
                     self.status_bar.showMessage("Session initialized - Ready to load ligands")
                     self.ligand_button.setEnabled(True)  # Enable the Ligand button
+                    self.ligand_button.setStyleSheet(self.enabled_button_style)
                     self.protein_button.setEnabled(False)
                     self.binding_site_button.setEnabled(False)
                     self.run_button.setEnabled(False)
@@ -430,7 +468,9 @@ class PyMOLOnlyWindow(QMainWindow, PyMOLDesktopGUI):
                 if ligand_files:
                     total_files = len(ligand_files)
                     self.ligand_button.setEnabled(False)
+                    self.ligand_button.setStyleSheet(self.disabled_button_style)
                     self.protein_button.setEnabled(True)  # Enable the Protein button
+                    self.protein_button.setStyleSheet(self.enabled_button_style)
                     global new_folder
                     new_folder = os.path.join(main_directory, "Ligand")
                     if os.path.exists(new_folder):
@@ -543,7 +583,9 @@ class PyMOLOnlyWindow(QMainWindow, PyMOLDesktopGUI):
 
                     # Enable the Binding Site button
                     self.protein_button.setEnabled(False)  # Disable the Protein button
+                    self.protein_button.setStyleSheet(self.disabled_button_style)
                     self.binding_site_button.setEnabled(True)
+                    self.binding_site_button.setStyleSheet(self.enabled_button_style)
 
                     show_stylish_messagebox(self, "Protein File", "Selected Protein File: {}".format(protein_file))
                     print("Protein File Loaded: {}".format(protein_file))
@@ -557,17 +599,62 @@ class PyMOLOnlyWindow(QMainWindow, PyMOLDesktopGUI):
             try:
                 print("Defining binding site...")
                 self.status_bar.showMessage("Configuring binding site parameters...")
+                # Access the global function
+                global dialogxfrom
                 dialogxfrom()
+                # Enable the Execute Docking button after binding site is defined
+                self.binding_site_button.setEnabled(False)
+                self.binding_site_button.setStyleSheet(self.disabled_button_style)
+                self.run_button.setEnabled(True)
+                self.run_button.setStyleSheet(self.enabled_button_style)
+                self.status_bar.showMessage("Binding site configured - Ready to execute docking")
             except Exception as e:
                 show_stylish_messagebox(self, "Error", "An error occurred while defining the binding site: {}".format(str(e)))
        
         def run_docking_dialog():
             try:
+                # Access the global function
+                global dialogxdock
                 dialogxdock()
-                self.status_bar.showMessage("Configuring docking parameters...")
+                self.status_bar.showMessage("Docking parameters configured - Ready to view results")
+                # Disable execute button and enable results button
+                self.run_button.setEnabled(False)
+                self.run_button.setStyleSheet(self.disabled_button_style)
+                self.results_button.setEnabled(True)
+                self.results_button.setStyleSheet(self.enabled_button_style)
             except Exception as e:
                 show_stylish_messagebox(self, "Error", "An error occurred while running docking: {}".format(str(e)))
                        
+        def view_results():
+            try:
+                # Check if results exist
+                if hasattr(self, 'main_directory') and main_directory:
+                    output_dir = os.path.join(main_directory, "output")
+                    if os.path.exists(output_dir):
+                        # Open file dialog to select result files
+                        result_files, _ = QFileDialog.getOpenFileNames(
+                            self, "Select Result Files", output_dir, 
+                            "All Files (*.*);;PDB Files (*.pdb);;SDF Files (*.sdf);;CSV Files (*.csv);;Log Files (*.log)"
+                        )
+                        if result_files:
+                            for file_path in result_files:
+                                if file_path.endswith(('.pdb', '.sdf')):
+                                    # Load molecular structure files into PyMOL
+                                    filename = os.path.basename(file_path)
+                                    self.cmd.load(file_path, filename)
+                                    self.object_list.addItem(f"Result: {filename}")
+                                    self.status_bar.showMessage(f"Loaded result: {filename}")
+                                else:
+                                    # For other files, show in a text viewer
+                                    self.show_file_viewer(file_path)
+                        else:
+                            show_stylish_messagebox(self, "No Files Selected", "Please select result files to view.")
+                    else:
+                        show_stylish_messagebox(self, "No Results Found", "No output directory found. Please run docking first.")
+                else:
+                    show_stylish_messagebox(self, "No Session", "Please initialize a session first.")
+            except Exception as e:
+                show_stylish_messagebox(self, "Error", "An error occurred while viewing results: {}".format(str(e)))
             
         # Connect buttons to their respective functions
       
@@ -576,6 +663,7 @@ class PyMOLOnlyWindow(QMainWindow, PyMOLDesktopGUI):
         self.protein_button.clicked.connect(load_from_file)
         self.binding_site_button.clicked.connect(define_binding_site)
         self.run_button.clicked.connect(run_docking_dialog)
+        self.results_button.clicked.connect(view_results)
 
         # Enhanced button layout with improved spacing and styling
         button_descriptions = [
@@ -583,54 +671,60 @@ class PyMOLOnlyWindow(QMainWindow, PyMOLDesktopGUI):
             "Load Small Molecule Ligands", 
             "Load Target Protein Structure", 
             "Configure Binding Site Parameters", 
-            "Execute Docking Simulation"
+            "Execute Docking Simulation",
+            "View and Analyze Results"
         ]
         
-        buttons_list = [self.start_button, self.ligand_button, self.protein_button, self.binding_site_button, self.run_button]
+        buttons_list = [self.start_button, self.ligand_button, self.protein_button, self.binding_site_button, self.run_button, self.results_button]
         
         for i, (button, description) in enumerate(zip(buttons_list, button_descriptions)):
             # Create a container for each button-label pair
             button_container = QWidget()
-            button_container.setStyleSheet("""
-                QWidget {
-                    background: rgba(255, 255, 255, 0.7);
-                    border-radius: 8px;
-                    margin: 2px;
-                    padding: 5px;
-                }
-                QWidget:hover {
-                    background: rgba(255, 255, 255, 0.9);
-                }
+            button_container.setStyleSheet(f"""
+                QWidget {{
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                              stop: 0 {MAIN_COLORS['background']}, stop: 1 {MAIN_COLORS['surface']});
+                    border-radius: 12px;
+                    border: 1px solid {MAIN_COLORS['border']};
+                    margin: 1px;
+                    padding: 6px;
+                    box-shadow: 0 1px 3px 0 {MAIN_COLORS['shadow']};
+                }}
+                QWidget:hover {{
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                              stop: 0 {MAIN_COLORS['surface']}, stop: 1 #f1f5f9);
+                    border-color: {MAIN_COLORS['primary']};
+                    transform: translateY(-1px);
+                }}
             """)
             
             container_layout = QVBoxLayout(button_container)
-            container_layout.setSpacing(5)
-            container_layout.setContentsMargins(8, 8, 8, 8)
+            container_layout.setSpacing(3)
+            container_layout.setContentsMargins(6, 6, 6, 6)
             
             # Add button
-            button.setFixedHeight(45)
+            button.setFixedHeight(38)
+            button.setMinimumWidth(200)  # Ensure minimum width
             container_layout.addWidget(button)
             
             # Add description label
             label = QLabel(description)
             label.setAlignment(Qt.AlignCenter)
-            label.setStyleSheet("""
-                QLabel {
+            label.setStyleSheet(f"""
+                QLabel {{
                     font-size: 11px;
-                    color: #546E7A;
-                    font-style: italic;
+                    color: {MAIN_COLORS['text_secondary']};
+                    font-style: normal;
+                    font-weight: 400;
                     margin: 0;
-                    padding: 0;
-                }
+                    padding: 2px 0;
+                    line-height: 1.4;
+                }}
             """)
             label.setWordWrap(True)
             container_layout.addWidget(label)
             
             newwidget_layout.addWidget(button_container)
-            
-            # Add spacing between buttons
-            if i < len(buttons_list) - 1:
-                newwidget_layout.addSpacing(5)
 
         # Set the layout for the new widget
         self.newwidget.setLayout(newwidget_layout)
@@ -640,23 +734,48 @@ class PyMOLOnlyWindow(QMainWindow, PyMOLDesktopGUI):
         # Menus and shortcuts
         self.undo_stack = []
    
-        # Add status bar with enhanced styling
+        # Add status bar with modern styling
         self.status_bar = self.statusBar()
-        self.status_bar.setStyleSheet("""
-            QStatusBar {
+        self.status_bar.setStyleSheet(f"""
+            QStatusBar {{
                 background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                          stop: 0 #66BB6A, stop: 1 #4CAF50);
+                                          stop: 0 {MAIN_COLORS['primary']}, stop: 1 {MAIN_COLORS['primary_dark']});
                 color: white;
                 font-size: 12px;
                 font-weight: 500;
-                padding: 4px 8px;
-                border-top: 1px solid #388E3C;
-            }
-            QStatusBar::item {
+                font-family: 'Segoe UI', 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
+                padding: 8px 16px;
+                border-top: 1px solid {MAIN_COLORS['primary_dark']};
+            }}
+            QStatusBar::item {{
                 border: none;
-            }
+            }}
         """)
-        self.status_bar.showMessage("Ready - Initialize a new session to begin molecular docking")
+        # Add progress bar to status bar
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setVisible(False)
+        self.progress_bar.setStyleSheet(f"""
+            QProgressBar {{
+                border: 1px solid {MAIN_COLORS['border']};
+                border-radius: 8px;
+                text-align: center;
+                font-weight: 600;
+                font-size: 11px;
+                color: {MAIN_COLORS['text']};
+                background-color: {MAIN_COLORS['surface']};
+                height: 16px;
+                max-width: 200px;
+            }}
+            QProgressBar::chunk {{
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                          stop: 0 {MAIN_COLORS['primary']}, stop: 1 {MAIN_COLORS['primary_dark']});
+                border-radius: 6px;
+                margin: 2px;
+            }}
+        """)
+        self.status_bar.addPermanentWidget(self.progress_bar)
+        
+        self.status_bar.showMessage("Ready - Initialize a new session to begin molecular docking | PandaDOCK Professional")
         
         self.create_shortcuts()
 
@@ -788,7 +907,27 @@ class PyMOLOnlyWindow(QMainWindow, PyMOLDesktopGUI):
         orient_action.triggered.connect(self.orient_current_object)
         self.addAction(orient_action)
 
-
+    def show_file_viewer(self, file_path):
+        """Show a simple file viewer dialog for text files"""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+        except UnicodeDecodeError:
+            try:
+                with open(file_path, 'r', encoding='latin-1') as f:
+                    content = f.read()
+            except:
+                content = "Cannot read file - binary or unsupported format"
+        except Exception as e:
+            content = f"Error reading file: {str(e)}"
+        
+        # Create a dialog to show the file content
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle(f"File Viewer - {os.path.basename(file_path)}")
+        dialog.setText(content[:1000] + "..." if len(content) > 1000 else content)
+        dialog.setDetailedText(content)
+        dialog.setIcon(QMessageBox.Information)
+        dialog.exec_()
 
     def on_object_selected(self, item):
         try:
@@ -1507,20 +1646,20 @@ class dialogfrom(QtWidgets.QDialog):
 
           
 
-         global dialogxfrom
-         def dialogxfrom():
-           
-           app = QtWidgets.QApplication.instance()
-           if app is None:
-            app = QtWidgets.QApplication([])
-           
-           
+         pass  # Remove the incorrectly placed function definition
 
-           global dialogfromx
-           dialogfromx = dialogfrom()
-           dialogfromx.setWindowTitle("PandaDock")
-           dialogfromx.setWindowIcon(QIcon(image_icon_path))
-           dialogfromx.exec_()
+# Define dialogxfrom at module level for proper accessibility
+def dialogxfrom():
+    """Create and show the binding site configuration dialog"""
+    app = QtWidgets.QApplication.instance()
+    if app is None:
+        app = QtWidgets.QApplication([])
+    
+    global dialogfromx
+    dialogfromx = dialogfrom()
+    dialogfromx.setWindowTitle("PandaDock - Binding Site Configuration")
+    dialogfromx.setWindowIcon(QIcon(image_icon_path))
+    dialogfromx.exec_()
 
 class Ui_Formdock(object):
     def setupUidock(self, dock):
@@ -1809,23 +1948,20 @@ class dialogdock(QtWidgets.QDialog):
 
           
 
-         global dialogxdock
-         def dialogxdock():
-           
-           app = QtWidgets.QApplication.instance()
-           if app is None:
-            app = QtWidgets.QApplication([])
-           
-           
+         pass  # Remove the incorrectly placed function definition
 
-           global dialogdockx
-           dialogdockx = dialogdock(parent=window)
-           dialogdockx.setWindowTitle("PandaDock")
-           dialogdockx.setWindowIcon(QIcon(image_icon_path))
-           dialogdockx.exec_()
-
-
- 
+# Define dialogxdock at module level for proper accessibility
+def dialogxdock():
+    """Create and show the docking configuration dialog"""
+    app = QtWidgets.QApplication.instance()
+    if app is None:
+        app = QtWidgets.QApplication([])
+    
+    global dialogdockx, window
+    dialogdockx = dialogdock(parent=window)
+    dialogdockx.setWindowTitle("PandaDock - Docking Configuration")
+    dialogdockx.setWindowIcon(QIcon(image_icon_path))
+    dialogdockx.exec_()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

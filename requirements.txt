@@ -18,3 +18,4 @@ shiboken6==6.9.1
 sip>=6.0
 toml>=0.10.2
 tomli>=1.2.0
+pandamap==4.1.0
