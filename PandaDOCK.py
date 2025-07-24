@@ -15,6 +15,9 @@ import os
 from Bio.PDB import PDBParser, PDBIO, Select
 import subprocess
 
+
+
+
 os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = os.path.join(
     os.path.dirname(sys.executable), "Lib", "site-packages", "PySide6", "plugins", "platforms"
 )
@@ -32,6 +35,22 @@ pandapng = os.path.join(mainpath, "Images", "logo_new.png")
 pandapos = os.path.join(mainpath, "Images", "Pandaposter.png")
 template = os.path.join(mainpath, "Templates")
 
+class ImageDialog(QtWidgets.QDialog):
+    def __init__(self, image_path, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Refined Viewer")
+        layout = QtWidgets.QVBoxLayout(self)
+        label = QtWidgets.QLabel()
+        label.setAlignment(QtCore.Qt.AlignCenter)
+        pixmap = QtGui.QPixmap(image_path)
+        if not pixmap.isNull():
+            # Only scale down if too large, never scale up
+            max_width, max_height = 800, 800
+            if pixmap.width() > max_width or pixmap.height() > max_height:
+                pixmap = pixmap.scaled(max_width, max_height, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+            label.setPixmap(pixmap)
+        layout.addWidget(label)
+        self.setMinimumSize(400, 400)
 
 def show_stylish_messagebox(parent, title, message, icon=QMessageBox.Information):
     msg_box = QMessageBox(parent)
@@ -139,9 +158,10 @@ class PyMOLOnlyWindow(QMainWindow, PyMOLDesktopGUI):
 
         # Appended Objects in SideBar
         self.newwidget = QWidget()
+        global OBJ
         self.object_list = QListWidget()
         self.object_list.itemClicked.connect(self.on_object_selected)
-        self.object_list_dock = QDockWidget("Loaded Ligands / Protein", self)
+        self.object_list_dock = QDockWidget("", self)
         self.object_list_dock.setWidget(self.object_list)
         self.object_list_dock.setFeatures(QDockWidget.NoDockWidgetFeatures)
         self.object_list_dock.setStyleSheet(f"""
@@ -166,6 +186,7 @@ class PyMOLOnlyWindow(QMainWindow, PyMOLDesktopGUI):
                 letter-spacing: 0.025em;
             }}
         """)
+        OBJ = self.object_list
         self.object_list.setStyleSheet(f"""
             QListWidget {{
                 background-color: {MAIN_COLORS['background']};
@@ -443,6 +464,10 @@ class PyMOLOnlyWindow(QMainWindow, PyMOLDesktopGUI):
         # Define button functions
         def start_new_session():
             try:
+                self.run_button.setStyleSheet(self.disabled_button_style)
+                self.results_button.setStyleSheet(self.disabled_button_style)
+                self.results_button.setEnabled(False)
+                self.run_button.setEnabled(False)
                 self.object_list.clear()
                 self.cmd.reinitialize()
                 global main_directory
@@ -455,7 +480,9 @@ class PyMOLOnlyWindow(QMainWindow, PyMOLDesktopGUI):
                     self.ligand_button.setStyleSheet(self.enabled_button_style)
                     self.protein_button.setEnabled(False)
                     self.binding_site_button.setEnabled(False)
-                    self.run_button.setEnabled(False)
+                   
+                    
+
                 else:
                     show_stylish_messagebox(self, "No Directory Selected", "Please select a directory to start a new session.")
                     print("No directory selected.")
@@ -618,8 +645,7 @@ class PyMOLOnlyWindow(QMainWindow, PyMOLDesktopGUI):
                 dialogxdock()
                 self.status_bar.showMessage("Docking parameters configured - Ready to view results")
                 # Disable execute button and enable results button
-                self.run_button.setEnabled(False)
-                self.run_button.setStyleSheet(self.disabled_button_style)
+                #self.run_button.setStyleSheet(self.disabled_button_style)
                 self.results_button.setEnabled(True)
                 self.results_button.setStyleSheet(self.enabled_button_style)
             except Exception as e:
@@ -628,27 +654,35 @@ class PyMOLOnlyWindow(QMainWindow, PyMOLDesktopGUI):
         def view_results():
             try:
                 # Check if results exist
-                if hasattr(self, 'main_directory') and main_directory:
-                    output_dir = os.path.join(main_directory, "output")
+                if main_directory:
+                    max_num = -1
+                    max_dir = None
+                    for dir in os.listdir(main_directory):
+                        if dir.startswith("output_"):
+                            try:
+                                num = int(dir.split("_")[1])
+                                if num > max_num:
+                                    max_num = num
+                                    max_dir = dir
+                            except (IndexError, ValueError):
+                                continue
+                    print(max_dir)
+                    global resultdir
+                    if max_dir:
+                        output_dir = os.path.join(main_directory, max_dir)
+                        
+                        resultdir = output_dir
+                    else:
+                        output_dir = os.path.join(main_directory, "output")
+                        
+                        resultdir = output_dir
+
                     if os.path.exists(output_dir):
-                        # Open file dialog to select result files
-                        result_files, _ = QFileDialog.getOpenFileNames(
-                            self, "Select Result Files", output_dir, 
-                            "All Files (*.*);;PDB Files (*.pdb);;SDF Files (*.sdf);;CSV Files (*.csv);;Log Files (*.log)"
-                        )
-                        if result_files:
-                            for file_path in result_files:
-                                if file_path.endswith(('.pdb', '.sdf')):
-                                    # Load molecular structure files into PyMOL
-                                    filename = os.path.basename(file_path)
-                                    self.cmd.load(file_path, filename)
-                                    self.object_list.addItem(f"Result: {filename}")
-                                    self.status_bar.showMessage(f"Loaded result: {filename}")
-                                else:
-                                    # For other files, show in a text viewer
-                                    self.show_file_viewer(file_path)
-                        else:
-                            show_stylish_messagebox(self, "No Files Selected", "Please select result files to view.")
+                      try:
+                        dialogxreport()
+                      except Exception as e:
+                        show_stylish_messagebox(self, "Error", "An error occurred while viewing results: {}".format(str(e)))
+                       
                     else:
                         show_stylish_messagebox(self, "No Results Found", "No output directory found. Please run docking first.")
                 else:
@@ -954,7 +988,8 @@ class PyMOLOnlyWindow(QMainWindow, PyMOLDesktopGUI):
 
                 print("Loaded and displayed object: {}".format(obj_name))
             elif obj_name.startswith("Heteroatoms-"):
-                self.cmd.show("sticks", obj_name)  # Show heteroatoms in "sticks" representation
+                self.cmd.show("sticks", obj_name)
+                self.cmd.disable("all")
                 self.cmd.zoom(obj_name) 
                  # Zoom into the heteroatom
                 self.cmd.clip("slab", 50)  # Apply big clipping for better visualization
@@ -972,6 +1007,14 @@ class PyMOLOnlyWindow(QMainWindow, PyMOLDesktopGUI):
                 # Enable both the heteroatom and the parent protein
                 self.cmd.enable(protein_name)
                 self.cmd.enable(obj_name)
+            elif obj_name.startswith("Output-"):
+
+                self.cmd.show("cartoon", obj_name)    # Show cartoon
+                self.cmd.disable("all")
+                self.cmd.enable(obj_name)
+                self.cmd.orient(obj_name)  # Orient the view to the selected object
+
+                  # Orient the view to the selected object
 
              
 
@@ -1031,8 +1074,9 @@ def show_exit_confirmation(event):
          # Use the new logo with better scaling
          pixmap = QtGui.QPixmap(pandapng) 
          scaled_pixmap = pixmap.scaled(80, 80, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+
          msg_box.setIconPixmap(scaled_pixmap)
-         
+           
          msg_box.setText("Are you sure you want to exit PandaDock?")
          msg_box.setInformativeText("Any unsaved work will be lost.")
          msg_box.setStandardButtons(QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
@@ -1045,8 +1089,7 @@ def show_exit_confirmation(event):
                 color: #2C3E50;
                 font-size: 14px;
                 font-family: 'Segoe UI', 'Arial', sans-serif;
-                border-radius: 15px;
-                border: 2px solid #4CAF50;
+                
             }
             QLabel {
                 color: #2C3E50;
@@ -1056,7 +1099,7 @@ def show_exit_confirmation(event):
             }
             QPushButton {
                 background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                          stop: 0 #66BB6A, stop: 1 #4CAF50);
+                                          stop: 0 #8b5cf6, stop: 1 #4f46e5);
                 color: white;
                 border-radius: 8px;
                 padding: 8px 20px;
@@ -1068,7 +1111,7 @@ def show_exit_confirmation(event):
             }
             QPushButton:hover {
                 background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                          stop: 0 #5CBB60, stop: 1 #388E3C);
+                                          stop: 0 #9170c6, stop: 1 #9170c6);
             }
             QPushButton[text="No"] {
                 background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
@@ -1091,6 +1134,62 @@ class Ui_Form(object):
         Form.setObjectName("Form")
         Form.resize(963, 368)
         self.listWidget = QtWidgets.QListWidget(Form)
+        self.listWidget.setStyleSheet("""
+    QListWidget {
+        background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                    stop: 0 #f8fafc, stop: 1 #e2e8f0);
+        color: #1e293b;
+        border-radius: 10px;
+        border: 1px solid #cbd5e1;
+        font-size: 13px;
+        font-family: 'Segoe UI', 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
+        padding: 6px;
+        selection-background-color: #8b5cf6;
+        selection-color: #fff;
+    }
+    QListWidget::item {
+        background: transparent;
+        padding: 8px 12px;
+        border-bottom: 1px solid #e2e8f0;
+        border-radius: 6px;
+        margin: 2px 0;
+        transition: all 0.2s;
+    }
+    QListWidget::item:selected {
+        background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                    stop: 0 #8b5cf6, stop: 1 #4f46e5);
+        color: #fff;
+        border: none;
+        font-weight: 500;
+    }
+    QListWidget::item:hover {
+        background: #ede9fe;
+        color: #4f46e5;
+        border: 1px solid #a5b4fc;
+    }
+    QScrollBar:vertical {
+        background: #e2e8f0;
+        width: 8px;
+        margin: 0;
+        border-radius: 4px;
+    }
+    QScrollBar::handle:vertical {
+        background: #a5b4fc;
+        min-height: 20px;
+        border-radius: 4px;
+    }
+    QScrollBar::handle:vertical:hover {
+        background: #8b5cf6;
+    }
+    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+        background: none;
+        height: 0px;
+    }
+    QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+        background: none;
+    }
+""")
+
         self.listWidget.setGeometry(QtCore.QRect(30, 110, 181, 141))
         self.listWidget.setObjectName("listWidget")
         for file in os.listdir(heteroatoms_dir):
@@ -1224,14 +1323,14 @@ class Ui_Form(object):
         self.pushButton.setObjectName("pushButton")
         self.pushButton.setStyleSheet("""
             QPushButton {
-                background-color: #4CAF50;
+                background-color: #8b5cf6;
                 color: white;
                 font-size: 14px;
                 border-radius: 5px;
                 padding: 5px 10px;
             }
             QPushButton:hover {
-                background-color: #45a049;
+                background-color: #4f46e5;
             }
             QPushButton:disabled {
                 background-color: #A5D6A7;
@@ -1259,6 +1358,61 @@ class Ui_Form(object):
         self.listWidget_2 = QtWidgets.QListWidget(Form)
         self.listWidget_2.setGeometry(QtCore.QRect(390, 111, 131, 211))
         self.listWidget_2.setObjectName("listWidget_2")
+        self.listWidget_2.setStyleSheet("""
+    QListWidget {
+        background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                    stop: 0 #f8fafc, stop: 1 #e2e8f0);
+        color: #1e293b;
+        border-radius: 10px;
+        border: 1px solid #cbd5e1;
+        font-size: 13px;
+        font-family: 'Segoe UI', 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
+        padding: 6px;
+        selection-background-color: #8b5cf6;
+        selection-color: #fff;
+    }
+    QListWidget::item {
+        background: transparent;
+        padding: 8px 12px;
+        border-bottom: 1px solid #e2e8f0;
+        border-radius: 6px;
+        margin: 2px 0;
+        transition: all 0.2s;
+    }
+    QListWidget::item:selected {
+        background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                    stop: 0 #8b5cf6, stop: 1 #4f46e5);
+        color: #fff;
+        border: none;
+        font-weight: 500;
+    }
+    QListWidget::item:hover {
+        background: #ede9fe;
+        color: #4f46e5;
+        border: 1px solid #a5b4fc;
+    }
+    QScrollBar:vertical {
+        background: #e2e8f0;
+        width: 8px;
+        margin: 0;
+        border-radius: 4px;
+    }
+    QScrollBar::handle:vertical {
+        background: #a5b4fc;
+        min-height: 20px;
+        border-radius: 4px;
+    }
+    QScrollBar::handle:vertical:hover {
+        background: #8b5cf6;
+    }
+    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+        background: none;
+        height: 0px;
+    }
+    QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+        background: none;
+    }
+""")
         parser = PDBParser(QUIET=True)
         for file in os.listdir(protein_folder):
             if file.endswith(".pdb"):
@@ -1358,6 +1512,22 @@ class Ui_Form(object):
         self.lineEdit = QtWidgets.QLineEdit(Form)
         self.lineEdit.setGeometry(QtCore.QRect(310, 80, 51, 41))
         self.lineEdit.setObjectName("lineEdit")
+        self.lineEdit.setStyleSheet("""
+    QLineEdit {
+        background: #fff;
+        color: #1e293b;
+         border-radius: 8px;
+         border: 1px solid #cbd5e1;
+         padding: 8px 12px;
+         font-size: 13px;
+         font-family: 'Segoe UI', 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
+         margin-bottom: 6px;
+     }
+     QLineEdit:focus {
+         border: 1.5px solid #8b5cf6;
+         background: #f3f0ff;
+     }
+ """)
         self.label_3 = QtWidgets.QLabel(Form)
         self.label_3.setGeometry(QtCore.QRect(280, 90, 21, 16))
         font = QtGui.QFont()
@@ -1377,6 +1547,22 @@ class Ui_Form(object):
         self.lineEdit_2 = QtWidgets.QLineEdit(Form)
         self.lineEdit_2.setGeometry(QtCore.QRect(310, 130, 51, 41))
         self.lineEdit_2.setObjectName("lineEdit_2")
+        self.lineEdit_2.setStyleSheet("""
+    QLineEdit {
+        background: #fff;
+        color: #1e293b;
+         border-radius: 8px;
+         border: 1px solid #cbd5e1;
+         padding: 8px 12px;
+         font-size: 13px;
+         font-family: 'Segoe UI', 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
+         margin-bottom: 6px;
+     }
+     QLineEdit:focus {
+         border: 1.5px solid #8b5cf6;
+         background: #f3f0ff;
+     }
+ """)
         self.label_5 = QtWidgets.QLabel(Form)
         self.label_5.setGeometry(QtCore.QRect(280, 190, 21, 16))
         font = QtGui.QFont()
@@ -1388,9 +1574,41 @@ class Ui_Form(object):
         self.lineEdit_3 = QtWidgets.QLineEdit(Form)
         self.lineEdit_3.setGeometry(QtCore.QRect(310, 180, 51, 41))
         self.lineEdit_3.setObjectName("lineEdit_3")
+        self.lineEdit_3.setStyleSheet("""
+    QLineEdit {
+        background: #fff;
+        color: #1e293b;
+         border-radius: 8px;
+         border: 1px solid #cbd5e1;
+         padding: 8px 12px;
+         font-size: 13px;
+         font-family: 'Segoe UI', 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
+         margin-bottom: 6px;
+     }
+     QLineEdit:focus {
+         border: 1.5px solid #8b5cf6;
+         background: #f3f0ff;
+     }
+ """)
         self.lineEdit_4 = QtWidgets.QLineEdit(Form)
         self.lineEdit_4.setGeometry(QtCore.QRect(310, 240, 51, 41))
         self.lineEdit_4.setObjectName("lineEdit_4")
+        self.lineEdit_4.setStyleSheet("""
+    QLineEdit {
+        background: #fff;
+        color: #1e293b;
+         border-radius: 8px;
+         border: 1px solid #cbd5e1;
+         padding: 8px 12px;
+         font-size: 13px;
+         font-family: 'Segoe UI', 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
+         margin-bottom: 6px;
+     }
+     QLineEdit:focus {
+         border: 1.5px solid #8b5cf6;
+         background: #f3f0ff;
+     }
+ """)
         self.label_6 = QtWidgets.QLabel(Form)
         self.label_6.setGeometry(QtCore.QRect(280, 250, 21, 16))
         font = QtGui.QFont()
@@ -1402,6 +1620,61 @@ class Ui_Form(object):
         self.listWidget_3 = QtWidgets.QListWidget(Form)
         self.listWidget_3.setGeometry(QtCore.QRect(530, 111, 191, 211))
         self.listWidget_3.setObjectName("listWidget_3")
+        self.listWidget_3.setStyleSheet("""
+    QListWidget {
+        background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                    stop: 0 #f8fafc, stop: 1 #e2e8f0);
+        color: #1e293b;
+        border-radius: 10px;
+        border: 1px solid #cbd5e1;
+        font-size: 13px;
+        font-family: 'Segoe UI', 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
+        padding: 6px;
+        selection-background-color: #8b5cf6;
+        selection-color: #fff;
+    }
+    QListWidget::item {
+        background: transparent;
+        padding: 8px 12px;
+        border-bottom: 1px solid #e2e8f0;
+        border-radius: 6px;
+        margin: 2px 0;
+        transition: all 0.2s;
+    }
+    QListWidget::item:selected {
+        background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                    stop: 0 #8b5cf6, stop: 1 #4f46e5);
+        color: #fff;
+        border: none;
+        font-weight: 500;
+    }
+    QListWidget::item:hover {
+        background: #ede9fe;
+        color: #4f46e5;
+        border: 1px solid #a5b4fc;
+    }
+    QScrollBar:vertical {
+        background: #e2e8f0;
+        width: 8px;
+        margin: 0;
+        border-radius: 4px;
+    }
+    QScrollBar::handle:vertical {
+        background: #a5b4fc;
+        min-height: 20px;
+        border-radius: 4px;
+    }
+    QScrollBar::handle:vertical:hover {
+        background: #8b5cf6;
+    }
+    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+        background: none;
+        height: 0px;
+    }
+    QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+        background: none;
+    }
+""")
         self.label_7 = QtWidgets.QLabel(Form)
         self.label_7.setGeometry(QtCore.QRect(390, 80, 141, 21))
         font = QtGui.QFont()
@@ -1433,14 +1706,14 @@ class Ui_Form(object):
         self.pushButton_2.setObjectName("pushButton_2")
         self.pushButton_2.setStyleSheet("""
             QPushButton {
-                background-color: #4CAF50;
+                background-color: #8b5cf6;
                 color: white;
                 font-size: 14px;
                 border-radius: 5px;
                 padding: 5px 10px;
             }
             QPushButton:hover {
-                background-color: #45a049;
+                background-color: #4f46e5;
             }
             QPushButton:disabled {
                 background-color: #A5D6A7;
@@ -1453,14 +1726,14 @@ class Ui_Form(object):
         self.pushButton_3.setObjectName("pushButton_3")
         self.pushButton_3.setStyleSheet("""
             QPushButton {
-                background-color: #4CAF50;
+                background-color: #8b5cf6;
                 color: white;
                 font-size: 14px;
                 border-radius: 5px;
                 padding: 5px 10px;
             }
             QPushButton:hover {
-                background-color: #45a049;
+                background-color: #4f46e5;
             }
             QPushButton:disabled {
                 background-color: #A5D6A7;
@@ -1516,14 +1789,14 @@ class Ui_Form(object):
         self.pushButton_4.setObjectName("pushButton_4")
         self.pushButton_4.setStyleSheet("""
             QPushButton {
-                background-color: #4CAF50;
+                background-color: #8b5cf6;
                 color: white;
                 font-size: 14px;
                 border-radius: 5px;
                 padding: 5px 10px;
             }
             QPushButton:hover {
-                background-color: #45a049;
+                background-color: #4f46e5;
             }
             QPushButton:disabled {
                 background-color: #A5D6A7;
@@ -1536,14 +1809,14 @@ class Ui_Form(object):
         self.pushButton_5.setObjectName("pushButton_5")
         self.pushButton_5.setStyleSheet("""
             QPushButton {
-                background-color: #4CAF50;
+                background-color: #8b5cf6;
                 color: white;
                 font-size: 14px;
                 border-radius: 5px;
                 padding: 5px 10px;
             }
             QPushButton:hover {
-                background-color: #45a049;
+                background-color: #4f46e5;
             }
             QPushButton:disabled {
                 background-color: #A5D6A7;
@@ -1575,14 +1848,14 @@ class Ui_Form(object):
         self.pushButton_7.setObjectName("pushButton_7")
         self.pushButton_7.setStyleSheet("""
             QPushButton {
-                background-color: #4CAF50;
+                background-color: #8b5cf6;
                 color: white;
                 font-size: 14px;
                 border-radius: 5px;
                 padding: 5px 10px;
             }
             QPushButton:hover {
-                background-color: #45a049;
+                background-color: #4f46e5;
             }
             QPushButton:disabled {
                 background-color: #A5D6A7;
@@ -1664,7 +1937,7 @@ def dialogxfrom():
 class Ui_Formdock(object):
     def setupUidock(self, dock):
         dock.setObjectName("dock")
-        dock.resize(972, 524)
+        dock.resize(972, 550)
         self.label = QtWidgets.QLabel(dock)
         self.label.setGeometry(QtCore.QRect(30, 60, 191, 31))
         font = QtGui.QFont()
@@ -1727,7 +2000,7 @@ class Ui_Formdock(object):
                 border-bottom: 1px solid #222;
             }
             QListWidget::item:selected {
-                background: #4CAF50;
+                background: #8b5cf6;
                 color: #fff;
                 border-radius: 6px;
             }
@@ -1742,12 +2015,12 @@ class Ui_Formdock(object):
                 border-radius: 6px;
             }
             QScrollBar::handle:vertical, QScrollBar::handle:horizontal  {
-                background: #4CAF50;
+                background: #8b5cf6;
                 min-height: 24px;
                 border-radius: 6px;
             }
             QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover {
-                background: #388E3C;
+                background: #9170c6;
             }
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical, 
             QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {                          
@@ -1760,7 +2033,26 @@ class Ui_Formdock(object):
             }
         """)
         self.plainTextEdit = QtWidgets.QPlainTextEdit(dock)
-        self.plainTextEdit.setGeometry(QtCore.QRect(30, 360, 921, 111))
+        self.plainTextEdit.setGeometry(QtCore.QRect(30, 380, 921, 90))
+        self.plainTextEdit.setStyleSheet("""
+    QPlainTextEdit {
+        background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                    stop:0 #18181b, stop:1 #23272e);
+        color: #e0e0e0;
+        font-family: 'Cascadia Code', 'Fira Code', 'Consolas', 'Monaco', monospace;
+        font-size: 14px;
+        border: 1.5px solid #6366f1;
+        border-radius: 8px;
+        padding: 10px 14px;
+        selection-background-color: #8b5cf6;
+        selection-color: #fff;
+        line-height: 1.5;
+    }
+    QPlainTextEdit:focus {
+        border: 2px solid #8b5cf6;
+        background: #23272e;
+    }
+""")
         
         self.dictx = { 
             "Fast Mode - PandaCore": "--mode fast --scoring pandacore --num-poses 9 --exhaustiveness 8",
@@ -1820,7 +2112,15 @@ class Ui_Formdock(object):
                     # For virtual screening, use --screen parameter
                     ligand_path = os.path.join(main_directory, 'Ligand')
                     protein_file = os.path.join(protein_folder, os.listdir(protein_folder)[0])
-                    output_directory = os.path.join(main_directory, 'output')
+                    if os.path.exists(os.path.join(main_directory, 'output')):
+                         num = 0
+                         for file in os.listdir(main_directory):
+                            if file.startswith("output"):
+                                 num += 1
+                         output_directory = os.path.join(main_directory, 'output_{}'.format(num))
+                    else:
+
+                       output_directory = os.path.join(main_directory, 'output')
                     dialogdockx.close()
                     main_window = dock.parent()  # dock is the dialog, its parent is the main window
                     if main_window:
@@ -1835,7 +2135,15 @@ class Ui_Formdock(object):
                         
                 else:
                     # For single ligand docking, use --ligand parameter
-                    output_directory = os.path.join(main_directory, "output")
+                    if os.path.exists(os.path.join(main_directory, 'output')):
+                         num = 0
+                         for file in os.listdir(main_directory):
+                            if file.startswith("output"):
+                                 num += 1
+                         output_directory = os.path.join(main_directory, 'output_{}'.format(num))
+                    else:
+
+                       output_directory = os.path.join(main_directory, 'output')
                     protein_file = os.path.join(protein_folder, os.listdir(protein_folder)[0])
                    
                     if os.path.exists(output_directory):
@@ -1856,18 +2164,18 @@ class Ui_Formdock(object):
                             main_window.process_next_ligand( command.split(), ligand_queue , protein_file, output_directory, x, y, z, radius )
             
         self.pushButton = QtWidgets.QPushButton(dock)
-        self.pushButton.setGeometry(QtCore.QRect(860, 480, 93, 28))
+        self.pushButton.setGeometry(QtCore.QRect(740, 480, 93, 28))
         self.pushButton.setObjectName("pushButton")
         self.pushButton.setStyleSheet("""
             QPushButton {
-                background-color: #4CAF50;
+                background-color: #4f46e5;
                 color: white;
                 font-size: 14px;
                 border-radius: 5px;
                 padding: 5px 10px;
             }
             QPushButton:hover {
-                background-color: #45a049;
+                background-color: #8b5cf6;
             }
             QPushButton:disabled {
                 background-color: #A5D6A7;
@@ -1879,18 +2187,18 @@ class Ui_Formdock(object):
         self.radioButton.setGeometry(QtCore.QRect(140, 320, 95, 31))
         self.radioButton.setObjectName("radioButton")
         self.pushButton_2 = QtWidgets.QPushButton(dock)
-        self.pushButton_2.setGeometry(QtCore.QRect(30, 320, 93, 28))
+        self.pushButton_2.setGeometry(QtCore.QRect(30, 320, 93, 10))
         self.pushButton_2.setObjectName("pushButton_2")
         self.pushButton_2.setStyleSheet("""
             QPushButton {
-                background-color: #4CAF50;
+                background-color: #4f46e5;
                 color: white;
                 font-size: 14px;
                 border-radius: 5px;
                 padding: 5px 10px;
             }
             QPushButton:hover {
-                background-color: #45a049;
+                background-color: #8b5cf6;
             }
             QPushButton:disabled {
                 background-color: #A5D6A7;
@@ -1948,7 +2256,7 @@ class dialogdock(QtWidgets.QDialog):
 
           
 
-         pass  # Remove the incorrectly placed function definition
+         pass  
 
 # Define dialogxdock at module level for proper accessibility
 def dialogxdock():
@@ -1963,11 +2271,299 @@ def dialogxdock():
     dialogdockx.setWindowIcon(QIcon(image_icon_path))
     dialogdockx.exec_()
 
+class Ui_Dialogreport(object):
+    def setupUireport(self, Dialogreport):
+        Dialogreport.setObjectName("Dialogreport")
+        Dialogreport.resize(850, 657)
+        Dialogreport.SetMaximumSize = QtCore.QSize(850, 657)
+        self.tabWidget = QtWidgets.QTabWidget(Dialogreport)
+        self.tabWidget.setGeometry(QtCore.QRect(30, 50, 561, 541))
+        self.tabWidget.setObjectName("tabWidget")
+        self.tabWidget.setStyleSheet("""
+            QTabWidget::pane {
+                border: 1px solid #ccc;
+                background: #f8f9fa;
+                border-radius: 8px;
+            }
+            QTabBar::tab {
+                background: #e9ecef;
+                padding: 10px;
+                margin-right: 2px;
+                border-radius: 4px;
+            }
+            QTabBar::tab:selected {
+                background: #6c757d;
+                color: white;
+            }
+            QTabBar::tab:hover {
+                background: #adb5bd;
+            }
+        """)
+       
+        self.tab = QtWidgets.QWidget()
+        self.tab.setObjectName("tab")
+        self.tabWidget.addTab(self.tab, "")
+        layout = QtWidgets.QVBoxLayout(self.tab)
+        png_path1 = os.path.join(resultdir, 'master_publication.png')
+        label1 = QtWidgets.QLabel()
+        label1.setAlignment(QtCore.Qt.AlignCenter)
+        if os.path.exists(png_path1):
+            pixmap1 = QtGui.QPixmap(png_path1)
+            if not pixmap1.isNull():
+                scaled_pixmap1 = pixmap1.scaled(500, 500, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+                label1.setPixmap(scaled_pixmap1)
+        layout.addWidget(label1)
+
+        self.tab_2 = QtWidgets.QWidget()
+        self.tab_2.setObjectName("tab_2")
+        self.tabWidget.addTab(self.tab_2, "")
+        layout2 = QtWidgets.QVBoxLayout(self.tab_2)
+        png_path2 = os.path.join(resultdir, 'ic50_ec50_analysis.png')
+        label2 = QtWidgets.QLabel()
+        label2.setAlignment(QtCore.Qt.AlignCenter)
+        if os.path.exists(png_path2):
+            pixmap2 = QtGui.QPixmap(png_path2)
+            if not pixmap2.isNull():
+                scaled_pixmap2 = pixmap2.scaled(500, 500, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+                label2.setPixmap(scaled_pixmap2)
+        layout2.addWidget(label2)
+
+        self.tab_3 = QtWidgets.QWidget()
+        self.tab_3.setObjectName("tab_3")
+        self.tabWidget.addTab(self.tab_3, "")
+        layout3 = QtWidgets.QVBoxLayout(self.tab_3)
+        png_path3 = os.path.join(resultdir, 'binding_metrics_analysis.png')
+        label3 = QtWidgets.QLabel()
+        label3.setAlignment(QtCore.Qt.AlignCenter)
+        if os.path.exists(png_path3):
+            pixmap3 = QtGui.QPixmap(png_path3)
+            if not pixmap3.isNull():
+                scaled_pixmap3 = pixmap3.scaled(500, 500, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+                label3.setPixmap(scaled_pixmap3)
+        layout3.addWidget(label3)
+
+        self.ScoreDistribution = QtWidgets.QWidget()
+        self.ScoreDistribution.setObjectName("ScoreDistribution")
+        self.tabWidget.addTab(self.ScoreDistribution, "")
+        layout4 = QtWidgets.QVBoxLayout(self.ScoreDistribution)
+        png_path4 = os.path.join(resultdir, 'score_distribution_analysis.png')
+        label4 = QtWidgets.QLabel()
+        label4.setAlignment(QtCore.Qt.AlignCenter)
+        if os.path.exists(png_path4):
+            pixmap4 = QtGui.QPixmap(png_path4)
+            if not pixmap4.isNull():
+                scaled_pixmap4 = pixmap4.scaled(500, 500, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+                label4.setPixmap(scaled_pixmap4)
+        layout4.addWidget(label4)
+        def openHTML():
+            html_file = os.path.join(resultdir, 'pandadock_report.html')
+            if os.path.exists(html_file):
+                if sys.platform.startswith('darwin'): 
+                    subprocess.call(('open', html_file))
+                elif os.name == 'nt': 
+                    os.startfile(html_file)
+                elif os.name == 'posix':  
+                    subprocess.call(('xdg-open', html_file))  
+            else:
+                show_stylish_messagebox(Dialogreport, "File Not Found", "The IC50-EC50 HTML file does not exist.")
+        self.pushButton = QtWidgets.QPushButton(Dialogreport)
+        self.pushButton.setGeometry(QtCore.QRect(610, 200, 111, 28))
+        self.pushButton.setObjectName("pushButton")
+        self.pushButton.setStyleSheet("""
+            QPushButton {
+                background-color: #4f46e5;
+                color: white;
+                font-size: 14px;
+                border-radius: 5px;
+                padding: 5px 10px;
+            }
+            QPushButton:hover {
+                background-color: #8b5cf6;
+            }
+            QPushButton:disabled {
+                background-color: #A5D6A7;
+                color: #FFFFFF;
+            }
+        """)
+        self.pushButton.clicked.connect(openHTML)
+        def Add_PDB():
+            new_dir = os.path.join(resultdir, 'poses')
+            filename, _ = QFileDialog.getOpenFileName(Dialogreport, "Select PDB File", new_dir, "PDB Files (*.pdb)")
+            if filename:
+                if os.path.exists(filename):
+                    protein_name = os.path.splitext(os.path.basename(filename))[0]
+                    ultimate_name = f"Output-{protein_name}"
+                    CMD.load(filename, ultimate_name)
+                    CMD.show("cartoon", ultimate_name)  # Show the protein in "cartoon" representation
+                    CMD.orient(ultimate_name)          # Orient the view to the protein
+
+                    # Disable all other objects and enable only the protein
+                    CMD.disable("all")
+                    CMD.enable(ultimate_name)
+
+                    # Add the protein to the object list
+                    item = QtWidgets.QListWidgetItem(ultimate_name)
+                    item.setData(Qt.UserRole, filename)  # Store the file path as hidden data
+                    OBJ.addItem(item)
+
+
+        self.pushButton_2 = QtWidgets.QPushButton(Dialogreport)
+        self.pushButton_2.setGeometry(QtCore.QRect(610, 300, 111, 28))
+        self.pushButton_2.setObjectName("pushButton_2")
+        self.pushButton_2.setStyleSheet("""
+            QPushButton {
+                background-color: #4f46e5;
+                color: white;
+                font-size: 14px;
+                border-radius: 5px;
+                padding: 5px 10px;
+            }
+            QPushButton:hover {
+                background-color: #8b5cf6;
+            }
+            QPushButton:disabled {
+                background-color: #A5D6A7;
+                color: #FFFFFF;
+            }
+        """)
+        self.pushButton_2.clicked.connect(Add_PDB)
+        def show_png_window():
+
+            dictx = {
+                "Master Publication": os.path.join(resultdir, 'master_publication.png'),
+                "IC50-EC50": os.path.join(resultdir, 'ic50_ec50_analysis.png'),
+                "Binding Metrics": os.path.join(resultdir, 'binding_metrics_analysis.png'),
+                "Score Distribution": os.path.join(resultdir, 'score_distribution_analysis.png')
+            }
+            tab_text = self.tabWidget.tabText(self.tabWidget.currentIndex())
+            png_path = dictx.get(tab_text, None)
+            if os.path.exists(png_path):
+                if sys.platform.startswith('darwin'): 
+                    subprocess.call(('open', png_path))
+                elif os.name == 'nt': 
+                    os.startfile(png_path)
+                elif os.name == 'posix':  
+                    subprocess.call(('xdg-open', png_path)) # This will open the PNG file in the default image viewer
+            else:
+                show_stylish_messagebox(Dialogreport, "File Not Found", "The PNG file does not exist.")
+        self.pushButton_3 = QtWidgets.QPushButton(Dialogreport)
+        self.pushButton_3.setGeometry(QtCore.QRect(610, 400, 111, 28))
+        self.pushButton_3.setObjectName("pushButton_3")
+        self.pushButton_3.setStyleSheet("""
+            QPushButton {
+                background-color: #4f46e5;
+                color: white;
+                font-size: 14px;
+                border-radius: 5px;
+                padding: 5px 10px;
+            }
+            QPushButton:hover {
+                background-color: #8b5cf6;
+            }
+            QPushButton:disabled {
+                background-color: #A5D6A7;
+                color: #FFFFFF;
+            }
+        """)
+        self.pushButton_3.clicked.connect(show_png_window)
+
+        def show_png_interactions():
+            try:
+                
+                files = [f for f in os.listdir(resultdir) if f.lower().endswith('.png') and f.startswith('pandamap')]
+                if not files:
+                    show_stylish_messagebox(Dialogreport, "No Files", "No 2D Interaction Map in Output")
+                    return
+                # Build a filter string for QFileDialog
+                
+                filename, _ = QFileDialog.getOpenFileName(Dialogreport, "Select Interaction Map PNG", resultdir, "PNG Files (*.png)")
+                if filename:
+                    if os.path.basename(filename).startswith('pandamap'):
+                        if os.path.exists(filename):
+                            # Open the selected PNG file
+                                if sys.platform.startswith('darwin'): 
+                                    subprocess.call(('open', filename))
+                                elif os.name == 'nt': 
+                                    os.startfile(filename)
+                                elif os.name == 'posix':  
+                                    subprocess.call(('xdg-open', filename))
+                        else:
+                            show_stylish_messagebox(Dialogreport, "File Not Found", "The selected PNG file does not exist.")
+                    else:
+                        show_stylish_messagebox(Dialogreport, "Invalid File", "The selected file is not a valid interaction map PNG.")
+            except Exception as e:
+                show_stylish_messagebox(Dialogreport, "PandaDock: Error", str(e))
+        
+        self.pushButton_4 = QtWidgets.QPushButton(Dialogreport)
+        self.pushButton_4.setGeometry(QtCore.QRect(610, 500, 111, 28))
+        self.pushButton_4.setObjectName("pushButton_3")
+        self.pushButton_4.setStyleSheet("""
+            QPushButton {
+                background-color: #4f46e5;
+                color: white;
+                font-size: 14px;
+                border-radius: 5px;
+                padding: 5px 10px;
+            }
+            QPushButton:hover {
+                background-color: #8b5cf6;
+            }
+            QPushButton:disabled {
+                background-color: #A5D6A7;
+                color: #FFFFFF;
+            }
+        """)
+        self.pushButton_4.clicked.connect(show_png_interactions)
+        self.retranslateUi(Dialogreport)
+        self.tabWidget.setCurrentIndex(0)
+        QtCore.QMetaObject.connectSlotsByName(Dialogreport)
+
+    def retranslateUi(self, Dialogreport):
+        _translate = QtCore.QCoreApplication.translate
+        Dialogreport.setWindowTitle(_translate("Dialogreport", "PandaDock"))
+        self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab), _translate("Dialogreport", "Master Publication"))
+        self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_2), _translate("Dialogreport", "IC50-EC50"))
+        self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_3), _translate("Dialogreport", "Binding Metrics"))
+        self.tabWidget.setTabText(self.tabWidget.indexOf(self.ScoreDistribution), _translate("Dialogreport", "Score Distribution"))
+        self.pushButton.setText(_translate("Dialogreport", "Overall Report"))
+        self.pushButton_2.setText(_translate("Dialogreport", "Add Output"))
+        self.pushButton_3.setText(_translate("Dialogreport", "Refine PNG"))
+        self.pushButton_4.setText(_translate("Dialogreport", "Show Interactions"))
+
+
+class dialogreport(QtWidgets.QDialog):
+         def __init__(self, parent=None):
+          super(dialogreport, self).__init__(parent)
+          self.ui = Ui_Dialogreport()
+          self.ui.setupUireport(self)
+          self.setWindowTitle("PandaDock")
+          self.setWindowIcon(QIcon(image_icon_path))
+          
+          
+
+          
+
+         pass  
+
+# Define dialogxdock at module level for proper accessibility
+def dialogxreport():
+   
+    app = QtWidgets.QApplication.instance()
+    if app is None:
+        app = QtWidgets.QApplication([])
+    
+    global dialogreportx, window
+    dialogreportx = dialogreport(parent=window)
+    dialogreportx.setWindowTitle("PandaDock - Analysis Report")
+    dialogreportx.setWindowIcon(QIcon(image_icon_path))
+    dialogreportx.exec_()
+
+
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = PyMOLOnlyWindow()
     window.closeEvent = show_exit_confirmation
     if getattr(sys, 'frozen', False):
           pyi_splash.close()
-    window.show()
+    window.showMaximized()
     sys.exit(app.exec_())
